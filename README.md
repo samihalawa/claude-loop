@@ -20,14 +20,18 @@ npm install -g claude-loop
 ## Quick Start (The Real Way)
 
 ```bash
-# Run the REAL iterative loop (recommended)
-claude-loop loop
+# Run the REAL iterative loop with UI
+claude-loop loop -u
 
 # This will:
-# 1. Start Claude with your debugging request
-# 2. Let Claude explore and fix issues autonomously  
-# 3. Continue the conversation for multiple iterations
-# 4. Keep fixing until everything works
+# 1. Start Claude with --dangerously-skip-permissions for FULL autonomy
+# 2. Run tree, grep endpoints/functions for complete overview
+# 3. Use Task tool for parallel complex analysis
+# 4. Continue with claude -c for multiple iterations
+# 5. Show progress in web UI at http://localhost:3456
+
+# Without UI
+claude-loop loop
 
 # Legacy commands (static analysis)
 claude-loop scan    # Just scan for issues

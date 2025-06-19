@@ -71,6 +71,7 @@ program
   .option('-p, --path <path>', 'Repository path (default: current directory)')
   .option('-m, --max-iterations <n>', 'Maximum iterations', '10')
   .option('-c, --claude-command <cmd>', 'Claude CLI command', 'claude')
+  .option('-u, --ui', 'Enable web UI to monitor progress')
   .action(async (options) => {
     try {
       // Direct to iterative engine
@@ -78,7 +79,8 @@ program
       const engine = new ClaudeLoopEngine({
         repoPath: options.path || process.cwd(),
         maxIterations: parseInt(options.maxIterations),
-        claudeCommand: options.claudeCommand
+        claudeCommand: options.claudeCommand,
+        ui: options.ui
       });
       
       await engine.run();
