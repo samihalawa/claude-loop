@@ -1,6 +1,6 @@
 {
   "name": "claude-loop",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "description": "Real iterative debugging - gives Claude CLI full autonomy to fix your repo until everything works",
   "main": "lib/index.js",
   "bin": {
