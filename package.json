@@ -1,8 +1,8 @@
 {
   "name": "claude-loop",
-  "version": "3.1.0",
-  "description": "Real iterative debugging - gives Claude CLI full autonomy to fix your repo until everything works",
-  "main": "lib/index.js",
+  "version": "4.0.0",
+  "description": "Pure Claude CLI autonomy - iteratively fixes your repo until everything works. No hardcoded patterns, just raw AI power.",
+  "main": "lib/claude-loop-engine.js",
   "bin": {
     "claude-loop": "bin/claude-loop.js"
   },
@@ -37,12 +37,7 @@
   "homepage": "https://github.com/samihalawa/claude-loop#readme",
   "dependencies": {
     "chalk": "^4.1.2",
-    "commander": "^11.0.0",
-    "ora": "^5.4.1",
-    "inquirer": "^8.2.6",
-    "glob": "^10.3.10",
-    "strip-ansi": "^6.0.1",
-    "ws": "^8.14.2"
+    "commander": "^11.0.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"
