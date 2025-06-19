@@ -1,0 +1,57 @@
+# Development files
+.git
+.gitignore
+*.log
+.DS_Store
+.env
+.env.local
+
+# Source files not needed in package
+src_agent_*
+ai_docs/
+specs/
+debug/monitor.html
+debug/orchestrator.js
+debug/scanner.js
+debug/validator.js
+
+# Config files
+.claude/
+.claude-loop.json
+.claude-loop-state.json
+.debug-*
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Build artifacts
+dist/
+build/
+coverage/
+
+# Documentation source
+docs/
+*.md
+!README.md
+
+# Examples
+examples/
+
+# CI/CD
+.github/
+.travis.yml
+.gitlab-ci.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+*.tmp

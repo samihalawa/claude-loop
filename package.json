@@ -1,0 +1,64 @@
+{
+  "name": "claude-loop",
+  "version": "1.0.2",
+  "description": "AI-powered repository debugging tool using Claude CLI for systematic issue detection and fixing",
+  "main": "lib/index.js",
+  "bin": {
+    "claude-loop": "bin/claude-loop.js"
+  },
+  "scripts": {
+    "test": "echo 'Tests coming soon'",
+    "build": "echo 'No build required'",
+    "prepublishOnly": "echo 'Publishing claude-loop'",
+    "version": "npm run build && git add -A",
+    "postversion": "git push && git push --tags"
+  },
+  "keywords": [
+    "claude",
+    "ai",
+    "debugging",
+    "code-quality",
+    "automated-fixing",
+    "repository-scanner",
+    "cli",
+    "developer-tools",
+    "code-analysis",
+    "multi-agent"
+  ],
+  "author": "Sami Halawa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samihalawa/claude-loop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/samihalawa/claude-loop/issues"
+  },
+  "homepage": "https://github.com/samihalawa/claude-loop#readme",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.0.0",
+    "ora": "^5.4.1",
+    "inquirer": "^8.2.6",
+    "glob": "^10.3.10",
+    "strip-ansi": "^6.0.1",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "templates/",
+    "README.md",
+    "LICENSE"
+  ],
+  "directories": {
+    "lib": "lib"
+  },
+  "type": "commonjs"
+}
