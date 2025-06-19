@@ -36,12 +36,14 @@ program
   .command('debug')
   .description('Run full debug cycle with automatic fixing')
   .option('-p, --path <path>', 'Repository path (default: current directory)')
-  .option('-m, --max-iterations <n>', 'Maximum debug iterations', '5')
+  .option('-m, --max-iterations <n>', 'Maximum debug iterations', '10')
   .option('-a, --agents <n>', 'Concurrent agents', '3')
   .option('-c, --claude-command <cmd>', 'Claude CLI command', 'claude')
   .option('--no-interactive', 'Skip confirmation prompts')
   .option('--dry-run', 'Show what would be fixed without applying')
   .option('-f, --focus <area>', 'Focus on specific area (syntax,tests,deps,types,security,perf)')
+  .option('--engine <type>', 'Debug engine: iterative (default) or legacy', 'iterative')
+  .option('--legacy', 'Use legacy static analysis mode')
   .action(async (options) => {
     try {
       const loop = new ClaudeLoop({
@@ -51,10 +53,35 @@ program
         claudeCommand: options.claudeCommand,
         interactive: options.interactive,
         dryRun: options.dryRun,
-        focus: options.focus
+        focus: options.focus,
+        engine: options.engine,
+        legacy: options.legacy
       });
       
       await loop.debug();
+    } catch (error) {
+      console.error(chalk.red('Error:'), error.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('loop')
+  .description('Run real iterative Claude loop (your style)')
+  .option('-p, --path <path>', 'Repository path (default: current directory)')
+  .option('-m, --max-iterations <n>', 'Maximum iterations', '10')
+  .option('-c, --claude-command <cmd>', 'Claude CLI command', 'claude')
+  .action(async (options) => {
+    try {
+      // Direct to iterative engine
+      const ClaudeLoopEngine = require('../lib/claude-loop-engine');
+      const engine = new ClaudeLoopEngine({
+        repoPath: options.path || process.cwd(),
+        maxIterations: parseInt(options.maxIterations),
+        claudeCommand: options.claudeCommand
+      });
+      
+      await engine.run();
     } catch (error) {
       console.error(chalk.red('Error:'), error.message);
       process.exit(1);
@@ -120,7 +147,11 @@ if (process.argv.length === 2) {
                                                       | |    
                                                       |_|    
   `));
-  console.log(chalk.gray('  AI-powered repository debugging tool\n'));
+  console.log(chalk.gray('  Real iterative AI-powered debugging\n'));
+  console.log(chalk.bold('  Quick start:'));
+  console.log(chalk.cyan('  claude-loop loop    ') + chalk.gray('# Run iterative debugging (recommended)'));
+  console.log(chalk.cyan('  claude-loop scan    ') + chalk.gray('# Scan for issues'));
+  console.log(chalk.cyan('  claude-loop debug   ') + chalk.gray('# Debug with options\n'));
   program.outputHelp();
 }
 

@@ -1,14 +1,15 @@
 # claude-loop
 
-AI-powered repository debugging tool using Claude CLI for systematic issue detection and autonomous fixing.
+Real iterative debugging tool that gives Claude CLI full autonomy to fix your repository until everything works.
 
-## Features
+## What It Really Does
 
-- 🤖 **Autonomous AI Agents**: Claude analyzes and fixes issues with full creative freedom
-- 🔍 **Comprehensive Scanning**: Detects syntax, test, dependency, type, security, and performance issues
-- ✅ **Smart Validation**: Every fix is validated to ensure no regressions
-- 📊 **Real-time Monitoring**: Watch the debugging progress live
-- 🚀 **Multi-language Support**: Works with JavaScript, TypeScript, Python, Go, Rust, and more
+Unlike static linters, claude-loop:
+- 🔄 **Iteratively calls Claude** multiple times using `-c` flag to continue conversations
+- 🧠 **Maintains context** across iterations to systematically fix issues
+- 🎯 **Focuses on functionality**: Broken buttons, dead links, non-working features
+- 🤖 **Full autonomy**: Claude can read, write, edit, and test your code
+- ✨ **Simplifies complexity**: Replaces hardcoded logic with AI when appropriate
 
 ## Installation
 
@@ -16,31 +17,48 @@ AI-powered repository debugging tool using Claude CLI for systematic issue detec
 npm install -g claude-loop
 ```
 
-## Quick Start
+## Quick Start (The Real Way)
 
 ```bash
-# Scan your repository for issues
-claude-loop scan
+# Run the REAL iterative loop (recommended)
+claude-loop loop
 
-# Run full autonomous debugging
-claude-loop debug
+# This will:
+# 1. Start Claude with your debugging request
+# 2. Let Claude explore and fix issues autonomously  
+# 3. Continue the conversation for multiple iterations
+# 4. Keep fixing until everything works
 
-# Debug specific areas
-claude-loop debug --focus tests
-claude-loop debug --focus security
-
-# Monitor debugging progress
-claude-loop monitor
+# Legacy commands (static analysis)
+claude-loop scan    # Just scan for issues
+claude-loop debug --legacy  # Old static approach
 ```
 
-## How It Works
+## How It ACTUALLY Works
 
-Unlike traditional linters or fixers, claude-loop gives Claude complete freedom to:
+1. **Starts Claude CLI** with a prompt like yours:
+   ```
+   systematically debug and fix this repository so all functionality works
+   ```
 
-1. **Understand Context**: Claude reads your entire codebase to understand patterns and intentions
-2. **Analyze Deeply**: Not just syntax - Claude understands what your code is trying to do
-3. **Fix Creatively**: Claude can refactor, optimize, and improve - not just patch
-4. **Validate Thoroughly**: Every fix is tested to ensure it actually improves your code
+2. **Claude runs with full autonomy** using `--max-turns 20` to:
+   - Read any file
+   - Edit code
+   - Run commands
+   - Test functionality
+
+3. **Continues iteratively** using `claude -c` to maintain context:
+   - Iteration 1: Find and fix broken buttons
+   - Iteration 2: Fix navigation and routes
+   - Iteration 3: Fix data persistence
+   - Continues until everything works
+
+4. **Focuses on REAL issues**:
+   - Buttons without click handlers
+   - Forms that don't submit
+   - Broken workflows
+   - UI inconsistencies
+   - Unnecessary complexity
 
 ## Commands
 

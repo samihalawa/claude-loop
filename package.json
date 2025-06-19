@@ -1,7 +1,7 @@
 {
   "name": "claude-loop",
-  "version": "1.0.2",
-  "description": "AI-powered repository debugging tool using Claude CLI for systematic issue detection and fixing",
+  "version": "2.0.0",
+  "description": "Real iterative debugging - gives Claude CLI full autonomy to fix your repo until everything works",
   "main": "lib/index.js",
   "bin": {
     "claude-loop": "bin/claude-loop.js"
