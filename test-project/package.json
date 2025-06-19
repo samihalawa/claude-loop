@@ -1,0 +1,13 @@
+{
+  "name": "broken-test-app",
+  "version": "1.0.0",
+  "description": "Test app with intentional bugs",
+  "main": "broken-app.js",
+  "scripts": {
+    "start": "node broken-app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}
