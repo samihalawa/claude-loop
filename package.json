@@ -1,6 +1,6 @@
 {
   "name": "claude-loop",
-  "version": "5.0.3",
+  "version": "5.1.0",
   "description": "Pure Claude CLI autonomy - iteratively fixes your repo until everything works. No hardcoded patterns, just raw AI power.",
   "main": "lib/claude-loop-engine.js",
   "bin": {
