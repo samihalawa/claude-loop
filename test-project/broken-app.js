@@ -3,14 +3,14 @@ const express = require('express');
 const app = express();
 
 // Missing semicolon
-const port = 3000
+const port = 3000;
 
 // Unused variable
 const unusedVar = "test";
 
 // Function with syntax error
 function brokenFunction() {
-    console.log("Hello World"
+    console.log("Hello World");
     // Missing closing parenthesis
 }
 
