@@ -1,0 +1,56 @@
+**INFINITE REPOSITORY DEBUGGING LOOP**
+
+You are about to embark on a sophisticated iterative debugging process. Think deeply about this infinite debugging task.
+
+**PHASE 1: REPOSITORY RECONNAISSANCE**
+Thoroughly analyze this repository to understand the current state:
+- Get complete project structure (tree -I 'node_modules|.git|dist|build')
+- Identify all endpoints and routes (grep -r "app\.get\|app\.post\|router\.")
+- Map all functions and classes (grep -r "function\|const.*=.*=>\|class")
+- Find configuration files (find . -name "*.json" -not -path "*/node_modules/*")
+- List all entry points and main files
+
+**PHASE 2: ISSUE DISCOVERY STRATEGY**
+Deploy multiple Task agents to analyze different aspects in parallel:
+
+**Task Agent Distribution:**
+- **Agent 1**: UI/UX Testing - Click every button, test every form, verify all navigation
+- **Agent 2**: Backend Testing - Test all API endpoints, verify data persistence, check error handling  
+- **Agent 3**: Integration Testing - Test full workflows end-to-end, verify all features work
+- **Agent 4**: Code Quality - Find hardcoded values, unnecessary complexity, broken patterns
+- **Agent 5**: Performance & Security - Check for bottlenecks, vulnerabilities, optimization opportunities
+
+**PHASE 3: PARALLEL DEBUGGING EXECUTION**
+Launch Task agents using this specification:
+
+```
+TASK: Debug [AREA] in this repository
+
+You are Debugging Agent [X] focusing on [AREA].
+
+REQUIREMENTS:
+1. Systematically test every aspect of [AREA]
+2. Document all issues found with specific examples
+3. Fix critical issues immediately
+4. Report back with status and remaining issues
+5. Use appropriate tools (Read, Edit, Bash, Grep, etc.)
+
+FOCUS: [Specific area like "UI interactions", "API endpoints", "data flow", etc.]
+
+DELIVERABLE: Working code with all [AREA] issues resolved
+```
+
+**PHASE 4: ITERATIVE REFINEMENT**
+After each wave of fixes:
+- Re-test all areas to ensure no regressions
+- Launch new Task agents for deeper analysis
+- Focus on remaining edge cases and complex issues
+- Ensure consistent user experience throughout
+
+**EXECUTION START:**
+Begin immediately by:
+1. Analyzing the repository structure completely
+2. Creating parallel Task agents for comprehensive debugging
+3. Fixing issues systematically as they're discovered
+
+Use the Task tool aggressively. Create multiple parallel debugging agents. Fix every broken button, every non-working feature, every UI inconsistency. Make this repository work perfectly.

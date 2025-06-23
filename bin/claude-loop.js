@@ -19,9 +19,15 @@ program
   .option('-u, --ui', 'Enable web UI to monitor progress')
   .action(async (options) => {
     try {
+      const maxIterations = parseInt(options.maxIterations);
+      if (isNaN(maxIterations) || maxIterations < 1) {
+        console.error(chalk.red('Error: max-iterations must be a positive number'));
+        process.exit(1);
+      }
+      
       const engine = new ClaudeLoopEngine({
         repoPath: options.path || process.cwd(),
-        maxIterations: parseInt(options.maxIterations),
+        maxIterations: maxIterations,
         claudeCommand: options.claudeCommand,
         ui: options.ui
       });
@@ -61,6 +67,7 @@ if (process.argv.length === 2) {
     console.error(chalk.red('Error:'), error.message);
     process.exit(1);
   });
+  return; // Prevent continuing to program.parse()
 }
 
 program.parse(process.argv);
