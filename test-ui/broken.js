@@ -1,3 +1,3 @@
 // Broken test file
-const broken = "syntax error
+const broken = "syntax error";
 console.log("test");
