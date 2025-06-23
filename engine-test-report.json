@@ -1,0 +1,78 @@
+{
+  "timestamp": "2025-06-23T10:35:41.781Z",
+  "summary": {
+    "totalTests": 11,
+    "passedTests": 10,
+    "failedTests": 1,
+    "successRate": 90.91,
+    "duration": 20
+  },
+  "results": [
+    {
+      "name": "Engine Initialization",
+      "status": "PASS",
+      "duration": 1,
+      "error": null
+    },
+    {
+      "name": "Security Utilities",
+      "status": "PASS",
+      "duration": 0,
+      "error": null
+    },
+    {
+      "name": "Temp File Management",
+      "status": "PASS",
+      "duration": 0,
+      "error": null
+    },
+    {
+      "name": "Signal Handling",
+      "status": "PASS",
+      "duration": 0,
+      "error": null
+    },
+    {
+      "name": "WebUI Integration",
+      "status": "PASS",
+      "duration": 16,
+      "error": null
+    },
+    {
+      "name": "Error Handling",
+      "status": "FAIL",
+      "duration": 19,
+      "error": "Should use default for invalid maxIterations"
+    },
+    {
+      "name": "Allowed Tools Configuration",
+      "status": "PASS",
+      "duration": 0,
+      "error": null
+    },
+    {
+      "name": "MCP Integration",
+      "status": "PASS",
+      "duration": 0,
+      "error": null
+    },
+    {
+      "name": "Concurrent Safety",
+      "status": "PASS",
+      "duration": 0,
+      "error": null
+    },
+    {
+      "name": "Memory Management",
+      "status": "PASS",
+      "duration": 1,
+      "error": null
+    },
+    {
+      "name": "Configuration Validation",
+      "status": "PASS",
+      "duration": 0,
+      "error": null
+    }
+  ]
+}

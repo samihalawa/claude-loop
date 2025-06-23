@@ -15,7 +15,7 @@ class ConcurrentStressTestSuite {
         this.webUI = null;
         this.testResults = [];
         this.connections = [];
-        this.testPort = 3337; // Different port for stress testing
+        this.testPort = 3338; // Different port for stress testing
         this.stressTestRunning = false;
     }
 

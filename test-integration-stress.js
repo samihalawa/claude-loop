@@ -10,7 +10,7 @@ async function testIntegrationStress() {
     console.log('🧪 Testing Integration Under Stress');
     
     let webui = null;
-    let testPort = 3555; // Different port for stress testing
+    let testPort = await findAvailablePort(8000); // Find available port starting from 8000
     
     try {
         // Test 1: Multiple WebUI Instances (Error handling)
@@ -415,6 +415,35 @@ async function connectWebSocket(port, token) {
                 reject(new Error('WebSocket connection timeout'));
             }
         }, 3000);
+    });
+}
+
+async function findAvailablePort(startPort) {
+    const net = require('net');
+    
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+        server.listen(startPort, (err) => {
+            if (err) {
+                // Port is busy, try next one
+                server.close();
+                findAvailablePort(startPort + 1).then(resolve).catch(reject);
+            } else {
+                const port = server.address().port;
+                server.close(() => {
+                    resolve(port);
+                });
+            }
+        });
+        
+        server.on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                // Port is busy, try next one
+                findAvailablePort(startPort + 1).then(resolve).catch(reject);
+            } else {
+                reject(err);
+            }
+        });
     });
 }
 
