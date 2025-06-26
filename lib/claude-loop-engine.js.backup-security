@@ -19,11 +19,75 @@ const {
     SECURITY
 } = require('./config/constants');
 
+// Enhanced security utilities
+function sanitizeCommand(command) {
+    const allowedCommands = ['claude', '/usr/local/bin/claude', 'npx claude'];
+    
+    if (!command || typeof command !== 'string') {
+        return CLAUDE_LOOP.DEFAULT_CLAUDE_COMMAND;
+    }
+    
+    if (/[;&|`$(){}[\]\\]/.test(command)) {
+        logger.warn(`Suspicious command detected: ${command}`);
+        return CLAUDE_LOOP.DEFAULT_CLAUDE_COMMAND;
+    }
+    
+    return allowedCommands.includes(command) ? command : CLAUDE_LOOP.DEFAULT_CLAUDE_COMMAND;
+}
+
 function createSecureTempFile(baseDir, prefix) {
     const crypto = require('crypto');
+    const os = require('os');
+    
+    const resolvedBaseDir = path.resolve(baseDir);
+    const safeDirs = [process.cwd(), os.tmpdir()];
+    const isSafeDir = safeDirs.some(safeDir => 
+        resolvedBaseDir.startsWith(path.resolve(safeDir))
+    );
+    
+    if (!isSafeDir) {
+        throw new Error(`Unsafe directory for temp file: ${resolvedBaseDir}`);
+    }
+    
     const randomSuffix = crypto.randomBytes(8).toString('hex');
     const filename = `${prefix}-${randomSuffix}.tmp`;
-    return path.join(baseDir, filename);
+    return path.join(resolvedBaseDir, filename);
+}
+
+function validateFilePath(filePath) {
+    try {
+        const resolved = path.resolve(filePath);
+        const cwd = process.cwd();
+        const tmpDir = require('os').tmpdir();
+        
+        if (!resolved.startsWith(cwd) && !resolved.startsWith(tmpDir)) {
+            throw new Error(`File path outside allowed directories: ${resolved}`);
+        }
+        
+        if (resolved.startsWith(tmpDir)) {
+            const basename = path.basename(resolved);
+            if (!/^[a-zA-Z0-9_-]+\.(tmp|temp)$/.test(basename)) {
+                logger.warn(`Suspicious temp file name: ${basename}`);
+            }
+        }
+        
+        return resolved;
+    } catch (error) {
+        throw new Error(`File path validation failed: ${error.message}`);
+    }
+}
+
+function validatePromptContent(content) {
+    if (!content || typeof content !== 'string') {
+        return false;
+    }
+    
+    if (content.length > FILE_SIZE_LIMITS.PROMPT_CONTENT_MAX) {
+        logger.warn(`Prompt content exceeds size limit: ${content.length} characters`);
+        return false;
+    }
+    
+    return true;
 }
 
 class ClaudeLoopEngine {
@@ -38,7 +102,7 @@ class ClaudeLoopEngine {
             this.maxIterations = providedIterations || CLAUDE_LOOP.MAX_ITERATIONS;
         }
         
-        this.claudeCommand = options.claudeCommand || 'claude';
+        this.claudeCommand = sanitizeCommand(options.claudeCommand || CLAUDE_LOOP.DEFAULT_CLAUDE_COMMAND);
         this.ui = options.ui || false;
         this.iteration = 0;
         this.sessionId = null;
@@ -49,7 +113,7 @@ class ClaudeLoopEngine {
         this.webUI = null;
         this.tempFiles = new Set();
         this.signalHandlersSetup = false;
-        this.progressInterval = null;
+        this.progressInterval = null; // For real-time progress updates
         
         this.setupSignalHandlers();
         
@@ -87,7 +151,19 @@ class ClaudeLoopEngine {
         this.signalHandlersSetup = true;
     }
 
-    // Real-time progress display
+    sanitizePromptContent(content) {
+        if (!content || typeof content !== 'string') {
+            throw new Error('Invalid prompt content');
+        }
+        
+        if (content.length > FILE_SIZE_LIMITS.PROMPT_CONTENT_MAX) {
+            throw new Error(`Prompt content too large: ${content.length} characters`);
+        }
+        
+        return content;
+    }
+
+    // NEW: Real-time progress display
     startProgressDisplay() {
         if (this.progressInterval) {
             clearInterval(this.progressInterval);
@@ -110,18 +186,18 @@ class ClaudeLoopEngine {
                     elapsed: elapsed
                 });
             }
-        }, 1000);
+        }, 1000); // Update every second
     }
 
     stopProgressDisplay() {
         if (this.progressInterval) {
             clearInterval(this.progressInterval);
             this.progressInterval = null;
-            process.stdout.write('\n');
+            process.stdout.write('\n'); // New line after progress
         }
     }
 
-    // Non-blocking Claude execution with real-time output
+    // NEW: Non-blocking Claude execution with real-time output
     async executeClaudeNonBlocking(args, prompt, timeoutMs = 1800000) {
         return new Promise((resolve, reject) => {
             logger.info(chalk.blue('\n📡 Starting Claude session (non-blocking)...'));
@@ -259,6 +335,10 @@ class ClaudeLoopEngine {
             }
 
             const promptContent = await this.generateInitialPrompt();
+            
+            if (!validatePromptContent(promptContent)) {
+                throw new Error('Prompt content failed security validation');
+            }
 
             // Start real-time progress display
             this.startProgressDisplay();
@@ -345,14 +425,14 @@ class ClaudeLoopEngine {
                 
                 setTimeout(async () => {
                     await this.webUI.stop();
-                }, 5000);
+                }, TIMEOUTS.WEBUI_STOP_DELAY || 5000);
             } catch (error) {
                 logger.error(`Error stopping WebUI: ${error.message}`);
             }
         }
     }
 
-    // Non-blocking continue session
+    // NEW: Non-blocking continue session
     async continueSessionNonBlocking() {
         const prompts = [
             `Continue checking for more issues. Use the Task tool to create parallel subtasks for complex analysis.
@@ -413,6 +493,10 @@ Fix any remaining issues.`
         }
         
         try {
+            if (!validatePromptContent(prompt)) {
+                throw new Error('Continue prompt content failed security validation');
+            }
+            
             // Use non-blocking execution for continue sessions
             const args = ['--continue', '--print', '--max-turns', '30', '--dangerously-skip-permissions'];
             
@@ -441,6 +525,7 @@ Fix any remaining issues.`
     }
 
     async generateInitialPrompt() {
+        // Generate comprehensive initial prompt
         const prompt = `You are an AI debugging agent with complete autonomy to fix this repository. Your goal is to systematically find and fix ALL broken functionality.
 
 IMPORTANT INSTRUCTIONS:
@@ -551,6 +636,17 @@ START DEBUGGING NOW. Show me what you find and fix.`;
         }
         
         logger.info('✅ Cleanup completed');
+    }
+
+    async secureCleanupTempFile(filePath) {
+        try {
+            await fs.unlink(filePath);
+            this.tempFiles.delete(filePath);
+            return true;
+        } catch (error) {
+            logger.warn(`Could not clean up temp file ${filePath}: ${error.message}`);
+            return false;
+        }
     }
 }
 
