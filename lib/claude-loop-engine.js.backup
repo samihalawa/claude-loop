@@ -1,0 +1,1112 @@
+const { spawn, execSync } = require('child_process');
+const fs = require('fs').promises;
+const path = require('path');
+const chalk = require('chalk');
+const readline = require('readline');
+const MCPInstaller = require('./mcp-installer');
+const WebUI = require('./web-ui');
+const logger = require('./utils/unified-logger');
+const {
+    CLAUDE_LOOP,
+    TIMEOUTS,
+    TIME_CONSTANTS,
+    FILE_SYSTEM,
+    UI_CONFIG,
+    UI_DISPLAY,
+    FILE_SIZE_LIMITS,
+    HTTP_RESPONSES,
+    PORTS,
+    SECURITY
+} = require('./config/constants');
+
+// Enhanced security utilities
+function sanitizeCommand(command) {
+    // Only allow known safe claude commands with strict validation
+    const allowedCommands = ['claude', '/usr/local/bin/claude', 'npx claude'];
+    
+    // Additional validation to prevent injection
+    if (!command || typeof command !== 'string') {
+        return CLAUDE_LOOP.DEFAULT_CLAUDE_COMMAND;
+    }
+    
+    // Check for suspicious characters that could enable command injection
+    if (/[;&|`$(){}[\]\\]/.test(command)) {
+        logger.warn(`Suspicious command detected: ${command}`);
+        return CLAUDE_LOOP.DEFAULT_CLAUDE_COMMAND;
+    }
+    
+    return allowedCommands.includes(command) ? command : CLAUDE_LOOP.DEFAULT_CLAUDE_COMMAND;
+}
+
+function createSecureTempFile(baseDir, prefix) {
+    const crypto = require('crypto');
+    const os = require('os');
+    
+    // Validate base directory is safe
+    const resolvedBaseDir = path.resolve(baseDir);
+    const safeDirs = [process.cwd(), os.tmpdir()];
+    const isSafeDir = safeDirs.some(safeDir => 
+        resolvedBaseDir.startsWith(path.resolve(safeDir))
+    );
+    
+    if (!isSafeDir) {
+        logger.warn(`Unsafe temp directory, using current working directory: ${resolvedBaseDir}`);
+        baseDir = process.cwd();
+    }
+    
+    // Generate cryptographically secure filename
+    const random = crypto.randomBytes(SECURITY.TOKEN_BYTES).toString(SECURITY.CRYPTO_ENCODING);
+    const timestamp = Date.now();
+    return path.join(baseDir, `${prefix}-${timestamp}-${random}.tmp`);
+}
+
+function validateFilePath(filePath) {
+    const os = require('os');
+    try {
+        // Input validation
+        if (!filePath || typeof filePath !== 'string') {
+            throw new Error('Invalid file path input');
+        }
+        
+        // Check for dangerous patterns
+        const dangerousPatterns = [
+            /\.\./,          // Parent directory traversal
+            /\/\//,          // Double slashes
+            /\\\\+/,         // Multiple backslashes  
+            /[\x00-\x1f]/,   // Control characters
+            /[<>:"|?*]/      // Invalid filename characters
+        ];
+        
+        for (const pattern of dangerousPatterns) {
+            if (pattern.test(filePath)) {
+                throw new Error(`Potentially dangerous file path pattern detected: ${filePath}`);
+            }
+        }
+        
+        // Resolve and normalize the path
+        const resolved = path.resolve(filePath);
+        const cwd = path.resolve(process.cwd());
+        const tmpDir = path.resolve(os.tmpdir());
+        
+        // Ensure file is within allowed directories (prevent path traversal)
+        const allowedDirs = [cwd, tmpDir];
+        const isAllowed = allowedDirs.some(allowedDir => 
+            resolved.startsWith(allowedDir + path.sep) || resolved === allowedDir
+        );
+        
+        if (!isAllowed) {
+            throw new Error(`File path outside allowed directories: ${resolved}`);
+        }
+        
+        // Additional validation for temp files
+        if (resolved.startsWith(tmpDir)) {
+            // Ensure temp files have appropriate naming patterns
+            const basename = path.basename(resolved);
+            if (!/^[a-zA-Z0-9_-]+\.(tmp|temp)$/.test(basename)) {
+                logger.warn(`Suspicious temp file name: ${basename}`);
+            }
+        }
+        
+        return resolved;
+    } catch (error) {
+        throw new Error(`File path validation failed: ${error.message}`);
+    }
+}
+
+function validatePromptContent(content) {
+    if (!content || typeof content !== 'string') {
+        return false;
+    }
+    
+    // No dangerous patterns - allow all legitimate debugging content
+    
+    // Length validation
+    if (content.length > FILE_SIZE_LIMITS.PROMPT_CONTENT_MAX) {
+        logger.warn(`Prompt content exceeds size limit: ${content.length} characters`);
+        return false;
+    }
+    
+    return true;
+}
+
+class ClaudeLoopEngine {
+    constructor(options = {}) {
+        this.repoPath = options.repoPath ? path.resolve(options.repoPath) : process.cwd();
+        
+        // Validate and set maxIterations with proper default handling
+        const providedIterations = options.maxIterations;
+        if (providedIterations !== undefined && (typeof providedIterations !== 'number' || providedIterations < 1 || !Number.isInteger(providedIterations))) {
+            logger.warn(`Invalid maxIterations: ${providedIterations}, using default: ${CLAUDE_LOOP.MAX_ITERATIONS}`);
+            this.maxIterations = CLAUDE_LOOP.MAX_ITERATIONS;
+        } else {
+            this.maxIterations = providedIterations || CLAUDE_LOOP.MAX_ITERATIONS;
+        }
+        
+        this.claudeCommand = sanitizeCommand(options.claudeCommand || CLAUDE_LOOP.DEFAULT_CLAUDE_COMMAND);
+        this.ui = options.ui || false;
+        this.iteration = 0;
+        this.sessionId = null;
+        this.conversationActive = false;
+        this.currentPhase = 'Initializing';
+        this.mcpInstaller = new MCPInstaller();
+        this.startTime = Date.now();
+        this.webUI = null;
+        this.tempFiles = new Set(); // Track temp files for cleanup
+        this.signalHandlersSetup = false; // Track signal handler setup
+        
+        // Setup signal handlers for proper cleanup (only once)
+        this.setupSignalHandlers();
+        
+        // ALL tools enabled for maximum autonomy
+        this.allowedTools = [
+            'Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 
+            'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch',
+            'NotebookRead', 'NotebookEdit', 'Task'
+        ];
+    }
+
+    setupSignalHandlers() {
+        // Prevent duplicate signal handlers
+        if (this.signalHandlersSetup) {
+            return;
+        }
+        
+        // Check if we already have too many listeners
+        const currentIntListeners = process.listenerCount('SIGINT');
+        if (currentIntListeners >= 10) {
+            logger.warn('Too many SIGINT listeners, skipping signal handler setup');
+            return;
+        }
+        
+        this.cleanup = this.cleanup.bind(this);
+        const cleanup = async () => {
+            logger.warn('Cleaning up resources...');
+            await this.cleanup();
+            process.exit(0);
+        };
+        
+        // Store reference to cleanup function for later removal
+        this.cleanupHandler = cleanup;
+        
+        process.on('SIGINT', cleanup);
+        process.on('SIGTERM', cleanup);
+        process.on('SIGQUIT', cleanup);
+        
+        this.signalHandlersSetup = true;
+    }
+
+    sanitizePromptContent(content) {
+        if (!content || typeof content !== 'string') {
+            throw new Error('Invalid prompt content');
+        }
+        
+        // Remove any potential shell injection patterns
+        const sanitized = content
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
+            .replace(/\$\{[^}]*\}/g, '') // Remove template literals
+            .replace(/`[^`]*`/g, '') // Remove backticks
+            .substring(0, FILE_SIZE_LIMITS.PROMPT_CONTENT_MAX); // Limit content size
+            
+        if (sanitized.length !== content.length) {
+            logger.warn('Prompt content was sanitized for security');
+        }
+        
+        return sanitized;
+    }
+
+    async secureCleanupTempFile(filePath) {
+        try {
+            // Validate path is still in our tracked set
+            if (!this.tempFiles.has(filePath)) {
+                logger.warn(`Attempting to clean up untracked file: ${filePath}`);
+                return false;
+            }
+            
+            // Securely overwrite file before deletion
+            const stats = await fs.stat(filePath);
+            if (stats.size > 0) {
+                // Overwrite with random data
+                const crypto = require('crypto');
+                const randomData = crypto.randomBytes(Math.min(stats.size, FILE_SIZE_LIMITS.SECURE_OVERWRITE_MAX));
+                await fs.writeFile(filePath, randomData);
+            }
+            
+            // Delete the file
+            await fs.unlink(filePath);
+            this.tempFiles.delete(filePath);
+            logger.debug(`Securely cleaned up temp file: ${path.basename(filePath)}`);
+            return true;
+        } catch (error) {
+            logger.warn(`Could not clean up temp file ${path.basename(filePath)}: ${error.message}`);
+            return false;
+        }
+    }
+
+    async cleanup() {
+        // Remove signal handlers to prevent memory leaks
+        if (this.cleanupHandler && this.signalHandlersSetup) {
+            try {
+                process.removeListener('SIGINT', this.cleanupHandler);
+                process.removeListener('SIGTERM', this.cleanupHandler);
+                process.removeListener('SIGQUIT', this.cleanupHandler);
+                this.signalHandlersSetup = false;
+            } catch (error) {
+                // Ignore errors when removing listeners
+            }
+        }
+        
+        // Securely clean up temp files
+        const cleanupPromises = Array.from(this.tempFiles).map(tempFile => 
+            this.secureCleanupTempFile(tempFile)
+        );
+        
+        await Promise.allSettled(cleanupPromises);
+        this.tempFiles.clear();
+        
+        // Stop WebUI
+        if (this.webUI) {
+            try {
+                await this.webUI.stop();
+            } catch (error) {
+                logger.error(`Error stopping WebUI: ${error.message}`);
+            }
+        }
+    }
+
+    async run() {
+        logger.sessionStart({
+            repoPath: this.repoPath,
+            maxIterations: this.maxIterations,
+            claudeCommand: this.claudeCommand
+        });
+        
+        // Start UI if requested
+        if (this.ui) {
+            try {
+                this.webUI = new WebUI();
+                await this.webUI.start();
+                
+                // Connect logger to WebUI for integrated output
+                logger.setWebUI(this.webUI);
+                
+                this.webUI.updateSession({
+                    isRunning: true,
+                    currentPhase: 'Initializing...',
+                    iterations: 0,
+                    startTime: this.startTime,
+                    maxIterations: this.maxIterations,
+                    repoPath: this.repoPath
+                });
+                logger.success('Web UI started successfully');
+            } catch (error) {
+                logger.error(`Failed to start Web UI: ${error.message}`);
+                this.webUI = null;
+            }
+        }
+        
+        // Validate repository path and ensure it's absolute
+        logger.debug(`Working in repository: ${this.repoPath}`);
+        logger.debug(`Repository path is absolute: ${path.isAbsolute(this.repoPath)}`);
+        logger.debug(`Current working directory: ${process.cwd()}`);
+        
+        if (this.webUI) {
+            this.webUI.addOutput(`Working in repository: ${this.repoPath}`, 'info');
+        }
+        
+        try {
+            await fs.access(this.repoPath);
+            logger.info(`Repository path validated: ${this.repoPath}`);
+            if (this.webUI) {
+                this.webUI.addOutput('✓ Repository path validated', 'success');
+            }
+        } catch (error) {
+            logger.error(`Repository path does not exist or is not accessible: ${this.repoPath}`);
+            if (this.webUI) {
+                this.webUI.addOutput(`❌ Repository path validation failed: ${error.message}`, 'error');
+            }
+            throw new Error(`Invalid repository path: ${this.repoPath}`);
+        }
+        
+        // Check and install MCPs first
+        if (this.webUI) {
+            this.webUI.updateSession({ currentPhase: 'Installing MCPs...' });
+            this.webUI.addOutput('Checking and installing MCP servers...', 'info');
+        }
+        await this.mcpInstaller.checkAndInstall();
+        
+        // Check which MCPs are available
+        const mcpStatus = await this.mcpInstaller.checkMCPAvailability();
+        if (mcpStatus.hasVUDA) {
+            logger.success('VUDA (Visual UI Debug Agent) available');
+            if (this.webUI) {
+                this.webUI.addOutput('✓ VUDA (Visual UI Debug Agent) available', 'success');
+            }
+        }
+        if (mcpStatus.hasBrowserMCP) {
+            logger.success('Browser MCP available');
+            if (this.webUI) {
+                this.webUI.addOutput('✓ Browser MCP available', 'success');
+            }
+        }
+        
+        const initialPrompt = `**INFINITE REPOSITORY DEBUGGING LOOP**
+
+You are about to embark on a sophisticated iterative debugging process. Think deeply about this infinite debugging task.
+
+**PHASE 1: REPOSITORY RECONNAISSANCE**
+Thoroughly analyze this repository to understand the current state:
+- Get complete project structure (tree -I 'node_modules|.git|dist|build')
+- Identify all endpoints and routes (grep -r "app\\.get\\|app\\.post\\|router\\.")
+- Map all functions and classes (grep -r "function\\|const.*=.*=>\\|class")
+- Find configuration files (find . -name "*.json" -not -path "*/node_modules/*")
+- List all entry points and main files
+
+**PHASE 2: ISSUE DISCOVERY STRATEGY**
+Deploy multiple Task agents to analyze different aspects in parallel:
+
+**Task Agent Distribution:**
+- **Agent 1**: UI/UX Testing - Click every button, test every form, verify all navigation
+- **Agent 2**: Backend Testing - Test all API endpoints, verify data persistence, check error handling  
+- **Agent 3**: Integration Testing - Test full workflows end-to-end, verify all features work
+- **Agent 4**: Code Quality - Find hardcoded values, unnecessary complexity, broken patterns
+- **Agent 5**: Performance & Security - Check for bottlenecks, vulnerabilities, optimization opportunities
+
+**PHASE 3: PARALLEL DEBUGGING EXECUTION**
+Launch Task agents using this specification:
+
+\`\`\`
+TASK: Debug [AREA] in this repository
+
+You are Debugging Agent [X] focusing on [AREA].
+
+REQUIREMENTS:
+1. Systematically test every aspect of [AREA]
+2. Document all issues found with specific examples
+3. Fix critical issues immediately
+4. Report back with status and remaining issues
+5. Use appropriate tools (Read, Edit, Bash, Grep, etc.)
+
+FOCUS: [Specific area like "UI interactions", "API endpoints", "data flow", etc.]
+
+DELIVERABLE: Working code with all [AREA] issues resolved
+\`\`\`
+
+**PHASE 4: ITERATIVE REFINEMENT**
+After each wave of fixes:
+- Re-test all areas to ensure no regressions
+- Launch new Task agents for deeper analysis
+- Focus on remaining edge cases and complex issues
+- Ensure consistent user experience throughout
+
+**EXECUTION START:**
+Begin immediately by:
+1. Analyzing the repository structure completely
+2. Creating parallel Task agents for comprehensive debugging
+3. Fixing issues systematically as they're discovered
+
+Use the Task tool aggressively. Create multiple parallel debugging agents. Fix every broken button, every non-working feature, every UI inconsistency. Make this repository work perfectly.`;
+        
+
+        logger.info(chalk.gray('Starting Claude session with full autonomy...\n'));
+        
+        if (this.webUI) {
+            this.webUI.updateSession({ currentPhase: 'Starting Claude CLI session...' });
+            this.webUI.addOutput('Starting Claude session with full autonomy...', 'info');
+        }
+        
+        try {
+            
+            // Start the initial Claude session using correct CLI flags with temp file for prompt
+            const allowedToolsStr = this.allowedTools.join(',');
+            
+            logger.info(chalk.gray(`Running with full autonomy...\n`));
+            
+            // Show progress
+            this.showProgress('Initializing Claude session...');
+            if (this.webUI) {
+                this.webUI.addOutput('Initializing Claude session...', 'info');
+            }
+            
+            // Write prompt to secure temp file to avoid shell escaping issues
+            const tempPromptFile = createSecureTempFile(this.repoPath, 'claude-loop-prompt');
+            const validatedPath = validateFilePath(tempPromptFile);
+            this.tempFiles.add(validatedPath); // Track for cleanup
+            logger.info(chalk.gray(`Creating secure temp file: ${path.basename(validatedPath)}`));
+            
+            if (this.webUI) {
+                this.webUI.addOutput(`Creating secure temp file: ${path.basename(validatedPath)}`, 'info');
+            }
+            
+            try {
+                // Create temp file with secure permissions and validate content
+                const sanitizedPrompt = this.sanitizePromptContent(initialPrompt);
+                await fs.writeFile(validatedPath, sanitizedPrompt, { 
+                    mode: FILE_SYSTEM.TEMP_FILE_MODE,
+                    flag: 'wx' // Create file exclusively, fail if exists
+                });
+                logger.info(chalk.gray(`✓ Secure temp file created successfully`));
+                if (this.webUI) {
+                    this.webUI.addOutput('✓ Secure temp file created', 'success');
+                }
+                
+                // Verify file was created and is secure
+                const stats = await fs.stat(validatedPath);
+                if ((stats.mode & parseInt('777', 8)) !== FILE_SYSTEM.TEMP_FILE_MODE) {
+                    logger.warn(chalk.yellow('⚠️  Temp file permissions may be insecure'));
+                }
+                logger.info(chalk.gray(`✓ Temp file verified and accessible`));
+            } catch (error) {
+                logger.error(chalk.red(`Failed to create secure temp file: ${error.message}`));
+                if (this.webUI) {
+                    this.webUI.addOutput(`❌ Failed to create secure temp file: ${error.message}`, 'error');
+                }
+                this.tempFiles.delete(validatedPath); // Remove from tracking if failed
+                throw error;
+            }
+            
+            // Use array-based arguments to prevent injection and validate content
+            const promptContent = await fs.readFile(validatedPath, 'utf8');
+            
+            // Validate prompt content for security
+            if (!validatePromptContent(promptContent)) {
+                throw new Error('Prompt content failed security validation');
+            }
+            
+            // Run initial command with progress tracking
+            logger.info(chalk.blue('\n📡 Starting Claude session:'));
+            logger.info(chalk.gray(`Command: ${this.claudeCommand}`));
+            logger.info(chalk.gray(`Max turns: ${CLAUDE_LOOP.MAX_TURNS_PER_ITERATION}`));
+            logger.info(chalk.gray(`Mode: Full autonomy (--dangerously-skip-permissions)\n`));
+            
+            if (this.webUI) {
+                this.webUI.updateSession({ currentPhase: 'Running initial Claude session...' });
+                this.webUI.addOutput('📡 Starting Claude CLI session', 'info');
+                this.webUI.addOutput(`Command: ${this.claudeCommand}`, 'info');
+                this.webUI.addOutput(`Max turns: ${CLAUDE_LOOP.MAX_TURNS_PER_ITERATION}`, 'info');
+                this.webUI.addOutput('Mode: Full autonomy', 'info');
+            }
+            
+            // Use stdin piping with streaming output for continuous display
+            const args = ['--print', '--output-format', 'stream-json', '--max-turns', '50', '--dangerously-skip-permissions'];
+            const childProcess = spawn(this.claudeCommand, args, {
+                cwd: this.repoPath,
+                stdio: ['pipe', 'pipe', 'pipe'], // pipe all for streaming capture
+                env: process.env
+            });
+            
+            // Capture and stream output in real-time
+            let outputBuffer = '';
+            
+            childProcess.stdout.on('data', (data) => {
+                const chunk = data.toString();
+                outputBuffer += chunk;
+                
+                // Process JSON streaming lines
+                const lines = chunk.split('\n');
+                lines.forEach(line => {
+                    if (line.trim()) {
+                        try {
+                            const jsonData = JSON.parse(line);
+                            if (jsonData.type === 'content_block_delta' && jsonData.delta?.text) {
+                                // Stream text content in real-time
+                                process.stdout.write(jsonData.delta.text);
+                                if (this.webUI) {
+                                    this.webUI.addOutput(jsonData.delta.text, 'info');
+                                }
+                            }
+                        } catch (e) {
+                            // Not JSON, might be regular text output
+                            console.log(line);
+                            if (this.webUI) {
+                                this.webUI.addOutput(line, 'info');
+                            }
+                        }
+                    }
+                });
+            });
+            
+            childProcess.stderr.on('data', (data) => {
+                const errorText = data.toString();
+                console.error(errorText);
+                if (this.webUI) {
+                    this.webUI.addOutput(errorText, 'error');
+                }
+            });
+            
+            // Add a small delay before writing to ensure process is ready
+            setTimeout(() => {
+                // Pipe the already-read prompt content to stdin
+                childProcess.stdin.write(promptContent);
+                childProcess.stdin.end();
+            }, 100);
+            
+            // Wait for process to complete with timeout
+            await new Promise((resolve, reject) => {
+                // Set up timeout for hung processes (30 minutes)
+                const timeout = setTimeout(() => {
+                    logger.info(chalk.yellow('⏰ Claude process timeout, terminating...'));
+                    childProcess.kill('SIGTERM');
+                    
+                    // Force kill after 5 seconds if still running
+                    setTimeout(() => {
+                        if (!childProcess.killed) {
+                            childProcess.kill('SIGKILL');
+                        }
+                    }, 5000);
+                    
+                    reject(new Error('Claude process timeout after 30 minutes'));
+                }, TIMEOUTS.CLAUDE_PROCESS || 1800000); // 30 minutes default
+                
+                childProcess.on('close', (code) => {
+                    clearTimeout(timeout);
+                    if (code === 0 || code === null) { // null means killed gracefully
+                        resolve();
+                    } else {
+                        reject(new Error(`Claude process exited with code ${code}`));
+                    }
+                });
+                
+                childProcess.on('error', (error) => {
+                    clearTimeout(timeout);
+                    reject(error);
+                });
+            });
+            
+            // Securely clean up temp file
+            const cleaned = await this.secureCleanupTempFile(validatedPath);
+            if (cleaned && this.webUI) {
+                this.webUI.addOutput('✓ Securely cleaned up temp file', 'success');
+            } else if (!cleaned && this.webUI) {
+                this.webUI.addOutput('Note: Could not clean up temp file', 'warning');
+            }
+            
+            this.conversationActive = true;
+            if (this.webUI) {
+                this.webUI.updateSession({ currentPhase: 'Running iterative debugging...' });
+            }
+            
+            // Continue the conversation iteratively
+            while (this.iteration < this.maxIterations) {
+                this.iteration++;
+                logger.info(`\n🔄 Iteration ${this.iteration}/${this.maxIterations}`);
+                logger.info('━'.repeat(UI_DISPLAY.SEPARATOR_LENGTH));
+                
+                // Update WebUI with current iteration
+                if (this.webUI) {
+                    this.webUI.updateSession({
+                        iterations: this.iteration,
+                        currentPhase: `Iteration ${this.iteration} - ${this.getIterationFocus(this.iteration)}`
+                    });
+                    this.webUI.addOutput(`\n🔄 Starting Iteration ${this.iteration}/${this.maxIterations}`, 'info');
+                }
+                
+                // Show iteration progress
+                const progressBar = this.generateProgressBar(this.iteration, this.maxIterations);
+                const progressPercent = Math.round((this.iteration / this.maxIterations) * UI_DISPLAY.PERCENTAGE_SCALE);
+                logger.info(`Progress: ${progressBar} ${progressPercent}%`);
+                logger.info(`Elapsed: ${this.formatElapsedTime(this.startTime)}`);
+                logger.info('━'.repeat(UI_DISPLAY.SEPARATOR_LENGTH) + '\n');
+                
+                if (this.webUI) {
+                    const webuiProgressPercent = Math.round((this.iteration / this.maxIterations) * UI_DISPLAY.PERCENTAGE_SCALE);
+                    const elapsed = this.formatElapsedTime(this.startTime);
+                    this.webUI.addOutput(`Progress: ${webuiProgressPercent}% | Elapsed: ${elapsed}`, 'info');
+                }
+                
+                
+                // Wait a bit to let file changes settle
+                await new Promise(resolve => setTimeout(resolve, TIMEOUTS.SESSION_SETTLE));
+                
+                // Continue with focused prompts using -c flag
+                const continueWorking = await this.continueSession();
+                
+                if (!continueWorking) {
+                    logger.info(chalk.green('\n✅ Claude reports all issues are fixed!'));
+                    if (this.webUI) {
+                        this.webUI.addOutput('✅ Claude reports all issues are fixed!', 'success');
+                        this.webUI.updateSession({ currentPhase: 'Session completed successfully' });
+                    }
+                    break;
+                }
+            }
+            
+        } catch (error) {
+            logger.error(chalk.red('\n❌ Error:'), error.message);
+            if (this.webUI) {
+                this.webUI.addOutput(`❌ Error: ${error.message}`, 'error');
+                this.webUI.updateSession({ 
+                    currentPhase: 'Session ended with error',
+                    isRunning: false 
+                });
+            }
+        }
+        
+        await this.generateReport();
+        
+        // Stop WebUI when done
+        if (this.webUI) {
+            try {
+                this.webUI.updateSession({ 
+                    isRunning: false,
+                    currentPhase: 'Session completed'
+                });
+                this.webUI.addOutput('🏁 Claude Loop session completed', 'info');
+                // Keep WebUI running for a bit so user can see final state
+                setTimeout(async () => {
+                    await this.webUI.stop();
+                }, TIMEOUTS.WEBUI_STOP_DELAY); // Stop after configured delay
+            } catch (error) {
+                logger.error(`Error stopping WebUI: ${error.message}`);
+            }
+        }
+    }
+
+    async continueSession() {
+        // Continuation prompts that focus on your specific concerns
+        const prompts = [
+            `Continue checking for more issues. Use the Task tool to create parallel subtasks for complex analysis.
+
+Specifically:
+- Click every button and verify it does something
+- Check if forms actually submit and save data
+- Verify navigation works (no 404s, no broken links)
+- Look for UI elements that seem broken or inconsistent
+- Find any functionality that doesn't work as expected
+
+Use Task tool to delegate complex checks. Fix the next issue you find. Show me what you're fixing.`,
+
+            `Keep debugging. Focus on:
+- Testing user workflows from start to finish
+- Finding places where the UI doesn't respond properly
+- Checking if data persists when it should
+- Looking for hardcoded values that should be dynamic (use AI instead)
+- Ensuring consistent behavior across the app
+
+What's broken? Fix it.`,
+
+            `Continue the systematic review:
+- Are there any buttons that don't have click handlers?
+- Any forms that don't validate or submit?
+- Any API calls that fail?
+- Any UI components that render incorrectly?
+- Any workflows that get stuck?
+
+Find and fix the next issue.`,
+
+            `Look deeper:
+- Check error handling - does the app handle failures gracefully?
+- Test edge cases - empty states, error states, loading states
+- Verify all CRUD operations work (Create, Read, Update, Delete)
+- Check responsive behavior on different screen sizes
+- Ensure accessibility basics work
+
+Fix whatever you find that's broken.`,
+
+            `Final checks:
+- Does every feature actually work when you try to use it?
+- Is the user experience consistent throughout?
+- Are there any console errors?
+- Do all the promised features actually function?
+- Is there unnecessary complexity that could be simplified?
+
+Fix any remaining issues.`
+        ];
+
+        const promptIndex = Math.min(this.iteration - 1, prompts.length - 1);
+        const prompt = prompts[promptIndex];
+
+        logger.info(chalk.yellow('📡 Continuing conversation with Claude...'));
+        logger.info(chalk.gray(`Focus: ${this.getIterationFocus(this.iteration)}\n`));
+        
+        if (this.webUI) {
+            this.webUI.addOutput('📡 Continuing conversation with Claude...', 'info');
+            this.webUI.addOutput(`Focus: ${this.getIterationFocus(this.iteration)}`, 'info');
+        }
+        
+        try {
+            // Use claude -c to continue with full permissions using temp file for prompt
+            const tempPromptFile = createSecureTempFile(this.repoPath, 'claude-loop-continue');
+            this.tempFiles.add(tempPromptFile); // Track for cleanup
+            logger.info(chalk.gray(`Creating continue temp file: ${tempPromptFile}`));
+            logger.info(chalk.gray(`Continue temp file is absolute: ${path.isAbsolute(tempPromptFile)}`));
+            
+            try {
+                await fs.writeFile(tempPromptFile, prompt, { mode: FILE_SYSTEM.TEMP_FILE_MODE });
+                logger.info(chalk.gray(`Successfully created continue temp file at: ${tempPromptFile}`));
+                if (this.webUI) {
+                    this.webUI.addOutput('✓ Continue temp file created', 'success');
+                }
+                
+                // Verify file was created
+                await fs.access(tempPromptFile);
+                logger.info(chalk.gray(`✓ Continue temp file exists and is accessible`));
+            } catch (error) {
+                logger.error(chalk.red(`Failed to create continue temp file: ${error.message}`));
+                logger.error(chalk.red(`Attempted path: ${tempPromptFile}`));
+                if (this.webUI) {
+                    this.webUI.addOutput(`❌ Failed to create continue temp file: ${error.message}`, 'error');
+                }
+                this.tempFiles.delete(tempPromptFile); // Remove from tracking if failed
+                throw error;
+            }
+            
+            // Validate prompt content for security
+            if (!validatePromptContent(prompt)) {
+                throw new Error('Continue prompt content failed security validation');
+            }
+            
+            // Use stdin piping with streaming output for continue sessions
+            const args = ['--continue', '--print', '--output-format', 'stream-json', '--max-turns', '30', '--dangerously-skip-permissions'];
+            const childProcess = spawn(this.claudeCommand, args, {
+                cwd: this.repoPath,
+                stdio: ['pipe', 'pipe', 'pipe'],
+                env: process.env
+            });
+            
+            // Add small delay and pipe the prompt to stdin
+            setTimeout(() => {
+                childProcess.stdin.write(prompt);
+                childProcess.stdin.end();
+            }, 100);
+            
+            let output = '';
+            
+            childProcess.stdout.on('data', (data) => {
+                const chunk = data.toString();
+                output += chunk;
+                
+                // Process streaming JSON for continue sessions
+                const lines = chunk.split('\n');
+                lines.forEach(line => {
+                    if (line.trim()) {
+                        try {
+                            const jsonData = JSON.parse(line);
+                            if (jsonData.type === 'content_block_delta' && jsonData.delta?.text) {
+                                // Stream text content in real-time
+                                process.stdout.write(jsonData.delta.text);
+                                if (this.webUI) {
+                                    this.webUI.addOutput(jsonData.delta.text, 'info');
+                                }
+                            }
+                        } catch (e) {
+                            // Not JSON, display as regular output
+                            console.log(line);
+                            if (this.webUI) {
+                                this.webUI.addOutput(line, 'info');
+                            }
+                        }
+                    }
+                });
+            });
+            
+            childProcess.stderr.on('data', (data) => {
+                const errorText = data.toString();
+                output += errorText;
+                console.error(errorText);
+                if (this.webUI) {
+                    this.webUI.addOutput(errorText, 'error');
+                }
+            });
+            
+            await new Promise((resolve, reject) => {
+                // Set up timeout for continue session (15 minutes)
+                const timeout = setTimeout(() => {
+                    logger.info(chalk.yellow('⏰ Claude continue session timeout, terminating...'));
+                    childProcess.kill('SIGTERM');
+                    
+                    // Force kill after 5 seconds if still running
+                    setTimeout(() => {
+                        if (!childProcess.killed) {
+                            childProcess.kill('SIGKILL');
+                        }
+                    }, 5000);
+                    
+                    reject(new Error('Claude continue session timeout after 15 minutes'));
+                }, TIMEOUTS.CLAUDE_CONTINUE_PROCESS || 900000); // 15 minutes default
+                
+                childProcess.on('close', (code) => {
+                    clearTimeout(timeout);
+                    if (code === 0 || code === null) { // null means killed gracefully
+                        resolve();
+                    } else {
+                        reject(new Error(`Claude process exited with code ${code}`));
+                    }
+                });
+                
+                childProcess.on('error', (error) => {
+                    clearTimeout(timeout);
+                    reject(error);
+                });
+            });
+            
+            // Clean up temp file
+            try {
+                await fs.unlink(tempPromptFile);
+                this.tempFiles.delete(tempPromptFile);
+                logger.info(chalk.gray(`✓ Cleaned up continue temp file: ${tempPromptFile}`));
+                if (this.webUI) {
+                    this.webUI.addOutput('✓ Cleaned up continue temp file', 'success');
+                }
+            } catch (error) {
+                logger.info(chalk.gray(`Note: Could not clean up temp file ${tempPromptFile}: ${error.message}`));
+                if (this.webUI) {
+                    this.webUI.addOutput(`Note: Could not clean up temp file: ${error.message}`, 'warning');
+                }
+            }
+            
+            // Show output
+            logger.info(chalk.gray(output));
+            
+            // Stream output to WebUI
+            if (this.webUI && output) {
+                // Split output into lines and stream each line
+                const lines = output.split('\n');
+                lines.forEach(line => {
+                    if (line.trim()) {
+                        // Determine output type based on content
+                        let outputType = 'info';
+                        if (line.includes('Error') || line.includes('❌') || line.includes('failed')) {
+                            outputType = 'error';
+                        } else if (line.includes('✓') || line.includes('success') || line.includes('completed')) {
+                            outputType = 'success';
+                        } else if (line.includes('warning') || line.includes('⚠')) {
+                            outputType = 'warning';
+                        }
+                        this.webUI.addOutput(line, outputType);
+                    }
+                });
+            }
+            
+            // Check if Claude thinks it's done
+            const donePatterns = [
+                /all issues (have been |are )?fixed/i,
+                /no (more |remaining )?issues found/i,
+                /everything (is |appears to be )?working/i,
+                /all (features|functionality) (are |is )?working/i,
+                /completed all fixes/i,
+                /no broken functionality/i
+            ];
+            
+            const isDone = donePatterns.some(pattern => pattern.test(output));
+            
+            return !isDone;
+        } catch (error) {
+            // If error contains output, show it
+            if (error.stdout) {
+                logger.info(chalk.gray(error.stdout));
+                if (this.webUI) {
+                    this.webUI.addOutput(error.stdout, 'error');
+                }
+            }
+            logger.error(chalk.red('Continuation error:'), error.message);
+            if (this.webUI) {
+                this.webUI.addOutput(`Continuation error: ${error.message}`, 'error');
+            }
+            return false;
+        }
+    }
+
+    async generateReport() {
+        logger.info(chalk.cyan.bold('\n📊 Claude Loop Session Complete\n'));
+        logger.info('━'.repeat(50));
+        logger.info(`Total Iterations: ${this.iteration}`);
+        logger.info(`Total Time: ${this.formatElapsedTime(this.startTime)}`);
+        logger.info('━'.repeat(50));
+        
+        logger.info('\nThe conversation with Claude has ended.');
+        logger.info('Check your repository for all the fixes that were applied.');
+        
+        if (this.webUI) {
+            this.webUI.addOutput('\n📊 Claude Loop Session Complete', 'info');
+            this.webUI.addOutput(`Total Iterations: ${this.iteration}`, 'info');
+            this.webUI.addOutput(`Total Time: ${this.formatElapsedTime(this.startTime)}`, 'info');
+            this.webUI.addOutput('The conversation with Claude has ended.', 'info');
+            this.webUI.addOutput('Check your repository for all the fixes that were applied.', 'info');
+        }
+        
+        const report = {
+            session: {
+                iterations: this.iteration,
+                duration: Date.now() - this.startTime,
+                timestamp: new Date().toISOString()
+            },
+            note: 'Claude has been working autonomously to fix issues. Check git diff to see all changes.'
+        };
+        
+        const sessionFile = path.resolve(path.join(this.repoPath, 'claude-loop-session.json'));
+        logger.info(chalk.gray(`Creating session file: ${sessionFile}`));
+        logger.info(chalk.gray(`Session file is absolute: ${path.isAbsolute(sessionFile)}`));
+        
+        try {
+            await fs.writeFile(
+                sessionFile,
+                JSON.stringify(report, null, 2)
+            );
+            logger.info(chalk.gray(`✓ Successfully created session file at: ${sessionFile}`));
+            if (this.webUI) {
+                this.webUI.addOutput(`✓ Session report saved to: ${sessionFile}`, 'success');
+            }
+        } catch (error) {
+            logger.error(chalk.red(`Failed to create session file: ${error.message}`));
+            logger.error(chalk.red(`Attempted path: ${sessionFile}`));
+            if (this.webUI) {
+                this.webUI.addOutput(`❌ Failed to create session file: ${error.message}`, 'error');
+            }
+            throw error;
+        }
+    }
+
+    showProgress(message) {
+        logger.info(chalk.gray(`→ ${message}`));
+        if (this.webUI) {
+            this.webUI.addOutput(`→ ${message}`, 'info');
+        }
+    }
+
+    generateProgressBar(current, total, width = UI_CONFIG.PROGRESS_BAR_WIDTH) {
+        const percentage = current / total;
+        const filled = Math.round(width * percentage);
+        const empty = width - filled;
+        return chalk.green('█'.repeat(filled)) + chalk.gray('░'.repeat(empty));
+    }
+
+    formatElapsedTime(startTime) {
+        const elapsed = Date.now() - startTime;
+        const minutes = Math.floor(elapsed / TIME_CONSTANTS.MILLISECONDS_PER_MINUTE);
+        const seconds = Math.floor((elapsed % TIME_CONSTANTS.MILLISECONDS_PER_MINUTE) / TIME_CONSTANTS.MILLISECONDS_PER_SECOND);
+        return `${minutes}m ${seconds}s`;
+    }
+
+    getIterationFocus(iteration) {
+        const focuses = [
+            'Button functionality and click handlers',
+            'Form validation and submission',
+            'Navigation and routing',
+            'Data persistence and API calls',
+            'Error handling and edge cases',
+            'UI consistency and responsiveness',
+            'Performance and optimization',
+            'Security and input validation',
+            'Accessibility and user experience',
+            'Final cleanup and polish'
+        ];
+        return focuses[Math.min(iteration - 1, focuses.length - 1)];
+    }
+
+    async startUI() {
+        try {
+            logger.info(chalk.cyan('🌐 Starting web UI...'));
+            
+            // Simple HTTP server for monitoring
+            const http = require('http');
+            const port = PORTS.WEBUI_DEFAULT;
+            
+            const server = http.createServer((req, res) => {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Claude Loop - Debug Monitor</title>
+                        <meta charset="utf-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <style>
+                            body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #1a1a1a; color: #fff; }
+                            .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+                            .header { text-align: center; margin-bottom: 30px; }
+                            .status { background: #2a2a2a; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+                            .progress { width: 100%; height: 20px; background: #333; border-radius: 10px; overflow: hidden; }
+                            .progress-bar { height: 100%; background: linear-gradient(90deg, #00d4aa, #00b894); transition: width 0.3s; }
+                            .metric { display: inline-block; margin: 10px 20px; text-align: center; }
+                            .metric-value { font-size: 2em; font-weight: bold; color: #00d4aa; }
+                            .metric-label { font-size: 0.9em; color: #888; }
+                            .live { color: #00d4aa; animation: pulse 2s infinite; }
+                            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+                        </style>
+                        <script>
+                            let iteration = 0;
+                            let maxIterations = ${this.maxIterations};
+                            
+                            function updateProgress() {
+                                const progress = Math.min((iteration / maxIterations) * 100, 100);
+                                document.getElementById('progress-bar').style.width = progress + '%';
+                                document.getElementById('iteration').textContent = iteration;
+                                document.getElementById('max-iterations').textContent = maxIterations;
+                            }
+                            
+                            function simulateProgress() {
+                                setInterval(() => {
+                                    if (iteration < maxIterations) {
+                                        iteration += 0.1;
+                                        updateProgress();
+                                    }
+                                }, 5000);
+                            }
+                            
+                            window.onload = () => {
+                                updateProgress();
+                                simulateProgress();
+                            };
+                        </script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <h1>🔄 Claude Loop Debug Monitor</h1>
+                                <p>Real-time iterative debugging with Claude CLI</p>
+                                <p class="live">● LIVE</p>
+                            </div>
+                            
+                            <div class="status">
+                                <h3>Debug Progress</h3>
+                                <div class="progress">
+                                    <div id="progress-bar" class="progress-bar" style="width: 0%"></div>
+                                </div>
+                                <br>
+                                
+                                <div class="metric">
+                                    <div id="iteration" class="metric-value">0</div>
+                                    <div class="metric-label">Current Iteration</div>
+                                </div>
+                                
+                                <div class="metric">
+                                    <div id="max-iterations" class="metric-value">${this.maxIterations}</div>
+                                    <div class="metric-label">Max Iterations</div>
+                                </div>
+                                
+                                <div class="metric">
+                                    <div class="metric-value">${path.basename(this.repoPath)}</div>
+                                    <div class="metric-label">Repository</div>
+                                </div>
+                            </div>
+                            
+                            <div class="status">
+                                <h3>Repository Path</h3>
+                                <code style="color: #00d4aa;">${this.repoPath}</code>
+                            </div>
+                            
+                            <div class="status">
+                                <h3>Claude CLI Status</h3>
+                                <p>Command: <code>${this.claudeCommand}</code></p>
+                                <p>Max turns per iteration: <strong>30</strong></p>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                `);
+            });
+            
+            server.listen(port, () => {
+                logger.info(chalk.green(`✓ Web UI running at http://localhost:${port}`));
+                logger.info(chalk.gray('  Open this URL in your browser to monitor progress\n'));
+            });
+            
+            this.uiServer = server;
+            
+        } catch (error) {
+            logger.info(chalk.yellow(`⚠ Could not start UI: ${error.message}`));
+        }
+    }
+}
+
+module.exports = ClaudeLoopEngine;

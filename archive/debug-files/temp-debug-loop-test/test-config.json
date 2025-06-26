@@ -1,0 +1,13 @@
+{
+  "debugSettings": {
+    "maxIterations": 3,
+    "enableUI": false,
+    "logLevel": "info"
+  },
+  "expectedFixes": [
+    "Add express dependency",
+    "Fix undefined variable",
+    "Add error handling",
+    "Add middleware"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "debug-test-project",
+  "version": "1.0.0",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "echo \"Tests not implemented\""
+  },
+  "dependencies": {}
+}

@@ -1,5 +1,80 @@
 # Environment variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Logs
+logs
+*.log
+webui*.log
+*.log.*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory
+coverage/
+*.lcov
+.nyc_output
+
+# Compiled binary addons
+build/Release
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Temporary folders
+tmp/
+temp/
+
+# Runtime generated files
+*.tmp
+claude-loop-prompt-*.tmp
+claude-loop-session.json
+*-test-report.json
+*-report.json
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Runtime test files
+test-broken-ui.html
+webui-browser-test.log
+webui-test*.log
 
 # Virtual environment
 venv/
@@ -12,24 +87,6 @@ __pycache__/
 # Aider files
 .aider.chat.history.md
 .aider.tags.cache.v3
-
-# Dependencies
-node_modules/
-npm-debug.log*
-*.log
-*.lock
-
-# OS files
-.DS_Store
-.DS_Store?
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# IDE/Editor files
-*.swp
-*.swo
 
 # Rust specific
 target/

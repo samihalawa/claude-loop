@@ -1,0 +1,78 @@
+{
+  "memoryTests": [
+    {
+      "test": "connection_memory_management",
+      "duration": 2.3685000000000045,
+      "memoryDelta": {
+        "rss": 5767168,
+        "heapUsed": 658456,
+        "heapTotal": 3932160,
+        "external": 0
+      },
+      "finalMapSizes": {
+        "connections": 1000,
+        "ipTracking": 1000,
+        "messageQueues": 1000
+      },
+      "memoryEfficiency": 0.6279525756835938
+    }
+  ],
+  "performanceMetrics": [
+    {
+      "test": "connection_pool_efficiency",
+      "duration": 0.11370900000000006,
+      "successfulAcquisitions": 5,
+      "rejectedAcquisitions": 15,
+      "poolUtilization": 0.25,
+      "averagePoolSize": 5
+    },
+    {
+      "test": "rate_limiting_efficiency",
+      "duration": 0.134999999999998,
+      "allowedRequests": 100,
+      "blockedRequests": 0,
+      "blockingEffectiveness": 0,
+      "trackedIPs": 10
+    },
+    {
+      "test": "file_operation_performance",
+      "totalDuration": 6.422249999999998,
+      "averageOperationTime": 0.11793090000000063,
+      "operationsPerSecond": 8479.541833395613,
+      "dataIntegrity": true
+    }
+  ],
+  "optimizationRecommendations": [
+    "Optimize connection pooling",
+    "Fine-tune rate limiting parameters"
+  ],
+  "timestamp": "2025-06-23T10:43:19.678Z",
+  "implementationAnalysis": {
+    "securityFeatures": [
+      "Timing-safe token comparison",
+      "Input sanitization",
+      "CSP headers",
+      "Clickjacking protection",
+      "Rate limiting",
+      "Secure random generation",
+      "WebSocket client verification",
+      "Input sanitization",
+      "Input sanitization",
+      "Secure random generation",
+      "Rate limiting"
+    ],
+    "performanceFeatures": [
+      "Resource cleanup",
+      "Performance monitoring",
+      "Memory usage tracking",
+      "Function throttling/debouncing",
+      "Caching/memoization",
+      "Object pooling",
+      "Resource cleanup",
+      "Performance monitoring",
+      "Resource cleanup",
+      "Resource cleanup"
+    ],
+    "recommendations": []
+  }
+}
