@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Claude Code Chat - Enhanced UI (No Token Required)</title>
+    
+    <!-- CDN Resources -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/5.1.1/marked.min.js"></script>
+    
+    <style>
+        :root {
+            --claude-primary: #667eea;
+            --claude-secondary: #764ba2;
+            --claude-dark: #1a202c;
+            --claude-darker: #0f1419;
+            --claude-bg: #0f1419;
+            --claude-card-bg: #1e2936;
+            --claude-text: #e2e8f0;
+            --claude-text-secondary: #8796a0;
+            --claude-border: #2d3748;
+            --claude-success: #48bb78;
+            --claude-warning: #ed8936;
+            --claude-error: #f56565;
+            --claude-accent: #ffd700;
+            --vscode-bg: #1e1e1e;
+            --vscode-sidebar: #252526;
+            --vscode-border: #3c3c3c;
+            --vscode-hover: #2a2d2e;
+            --vscode-blue: #007acc;
+        }
+
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body { 
+            background: var(--claude-bg);
+            color: var(--claude-text);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .app-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .app-header {
+            background: linear-gradient(135deg, var(--claude-primary) 0%, var(--claude-secondary) 100%);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--claude-border);
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.2);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: white;
+        }
+
+        .brand-icon {
+            font-size: 1.5rem;
+            background: linear-gradient(45deg, var(--claude-accent), #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .brand-text h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .model-selector {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 0.5rem;
+            color: white;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+
+        .settings-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 0.5rem;
+            color: white;
+            padding: 0.5rem;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .settings-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: rotate(90deg);
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        /* Settings Panel */
+        .settings-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .settings-overlay.show {
+            display: flex;
+            opacity: 1;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .settings-panel {
+            background: var(--claude-card-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: 1rem;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .settings-overlay.show .settings-panel {
+            transform: scale(1);
+        }
+
+        .settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 2rem;
+            border-bottom: 1px solid var(--claude-border);
+        }
+
+        .settings-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--claude-text);
+        }
+
+        .settings-close {
+            background: none;
+            border: none;
+            color: var(--claude-text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
+        }
+
+        .settings-close:hover {
+            background: var(--claude-border);
+            color: var(--claude-text);
+        }
+
+        .settings-content {
+            padding: 2rem;
+        }
+
+        .settings-section {
+            margin-bottom: 2rem;
+        }
+
+        .settings-section h3 {
+            color: var(--claude-text);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .setting-item {
+            background: var(--claude-darker);
+            border: 1px solid var(--claude-border);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+        }
+
+        .setting-label {
+            font-weight: 600;
+            color: var(--claude-text);
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .setting-input {
+            width: 100%;
+            background: var(--claude-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: 0.5rem;
+            color: var(--claude-text);
+            padding: 0.75rem;
+            font-size: 0.875rem;
+            transition: border-color 0.2s ease;
+        }
+
+        .setting-input:focus {
+            outline: none;
+            border-color: var(--claude-primary);
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+
+        .setting-description {
+            color: var(--claude-text-secondary);
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .mcp-server {
+            background: var(--claude-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .mcp-server-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .mcp-server-name {
+            font-weight: 600;
+            color: var(--claude-text);
+        }
+
+        .mcp-server-status {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .mcp-server-status.connected {
+            background: rgba(72, 187, 120, 0.2);
+            color: var(--claude-success);
+        }
+
+        .mcp-server-status.disconnected {
+            background: rgba(245, 101, 101, 0.2);
+            color: var(--claude-error);
+        }
+
+        .settings-actions {
+            display: flex;
+            gap: 1rem;
+            padding: 2rem;
+            border-top: 1px solid var(--claude-border);
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: var(--claude-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--claude-secondary);
+        }
+
+        .btn-secondary {
+            background: var(--claude-border);
+            color: var(--claude-text);
+        }
+
+        .btn-secondary:hover {
+            background: var(--claude-text-secondary);
+        }
+
+        .status-pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--claude-success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        /* Main Layout */
+        .main-content {
+            flex: 1;
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 300px;
+            background: var(--vscode-sidebar);
+            border-right: 1px solid var(--vscode-border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--vscode-border);
+            display: flex;
+            align-items: center;
+            justify-content: between;
+        }
+
+        .sidebar-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--claude-text);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .file-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background 0.2s ease;
+        }
+
+        .tree-item:hover {
+            background: var(--vscode-hover);
+        }
+
+        .tree-item.selected {
+            background: var(--vscode-blue);
+            color: white;
+        }
+
+        .tree-icon {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Chat Area */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--claude-bg);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .message {
+            display: flex;
+            gap: 1rem;
+            max-width: 100%;
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 1.2rem;
+        }
+
+        .message.assistant .message-avatar {
+            background: linear-gradient(135deg, var(--claude-primary), var(--claude-secondary));
+            color: white;
+        }
+
+        .message.user .message-avatar {
+            background: var(--claude-accent);
+            color: var(--claude-dark);
+        }
+
+        .message-content {
+            flex: 1;
+            background: var(--claude-card-bg);
+            border-radius: 1rem;
+            padding: 1rem;
+            border: 1px solid var(--claude-border);
+            position: relative;
+        }
+
+        .message.user .message-content {
+            background: var(--vscode-blue);
+            color: white;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .message-author {
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .message-time {
+            font-size: 0.75rem;
+            color: var(--claude-text-secondary);
+        }
+
+        .message-text {
+            line-height: 1.6;
+            font-size: 0.9375rem;
+        }
+
+        .message-actions {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            display: flex;
+            gap: 0.5rem;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .message:hover .message-actions {
+            opacity: 1;
+        }
+
+        .action-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 0.25rem;
+            color: var(--claude-text-secondary);
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: var(--claude-text);
+        }
+
+        /* Code Blocks */
+        .code-block {
+            background: var(--claude-darker);
+            border: 1px solid var(--claude-border);
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+            overflow: hidden;
+        }
+
+        .code-header {
+            background: var(--claude-border);
+            padding: 0.75rem 1rem;
+            font-size: 0.75rem;
+            color: var(--claude-text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .code-content {
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        /* Chat Input */
+        .chat-input-container {
+            padding: 1rem;
+            border-top: 1px solid var(--claude-border);
+            background: var(--claude-card-bg);
+        }
+
+        .chat-input-wrapper {
+            position: relative;
+            background: var(--claude-bg);
+            border: 1px solid var(--claude-border);
+            border-radius: 1rem;
+            overflow: hidden;
+            transition: border-color 0.2s ease;
+        }
+
+        .chat-input-wrapper:focus-within {
+            border-color: var(--claude-primary);
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+
+        .chat-input {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: var(--claude-text);
+            padding: 1rem 3rem 1rem 1rem;
+            font-size: 0.9375rem;
+            resize: none;
+            min-height: 50px;
+            max-height: 200px;
+            outline: none;
+        }
+
+        .chat-input::placeholder {
+            color: var(--claude-text-secondary);
+        }
+
+        .send-button {
+            position: absolute;
+            right: 0.75rem;
+            bottom: 0.75rem;
+            background: var(--claude-primary);
+            border: none;
+            border-radius: 0.5rem;
+            color: white;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .send-button:hover {
+            background: var(--claude-secondary);
+            transform: scale(1.05);
+        }
+
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .input-features {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--claude-darker);
+            border-top: 1px solid var(--claude-border);
+            font-size: 0.75rem;
+            color: var(--claude-text-secondary);
+        }
+
+        .feature-hint {
+            background: rgba(102, 126, 234, 0.1);
+            color: var(--claude-primary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-weight: 500;
+        }
+
+        /* Thinking Indicator */
+        .thinking-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: var(--claude-card-bg);
+            border-radius: 1rem;
+            border: 1px solid var(--claude-border);
+            margin: 1rem;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+        }
+
+        .thinking-indicator.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .thinking-dots {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .thinking-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--claude-primary);
+            border-radius: 50%;
+            animation: thinking 1.4s infinite ease-in-out;
+        }
+
+        .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes thinking {
+            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 280px;
+            }
+            
+            .app-header {
+                flex-direction: column;
+                gap: 0.5rem;
+                text-align: center;
+            }
+            
+            .header-controls {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--claude-darker);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--claude-border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--claude-primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <div class="app-header">
+            <div class="brand">
+                <i class="fas fa-robot brand-icon"></i>
+                <div class="brand-text">
+                    <h1>Claude Code Chat</h1>
+                </div>
+            </div>
+            
+            <div class="header-controls">
+                <select class="model-selector" id="modelSelector" onchange="handleModelChange()">
+                    <option value="sonnet">Claude 3.5 Sonnet</option>
+                    <option value="opus">Claude 3 Opus</option>
+                    <option value="haiku">Claude 3 Haiku</option>
+                </select>
+                
+                <button class="settings-btn" onclick="toggleSettings()" title="Settings">
+                    <i class="fas fa-cog"></i>
+                </button>
+                
+                <div id="connectionStatus" class="connection-status">
+                    <div class="status-pulse"></div>
+                    <span>Connected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-title">Project Files</div>
+                </div>
+                <div class="file-tree" id="fileTree">
+                    <!-- File tree will be populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Chat Container -->
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Welcome message -->
+                    <div class="message assistant">
+                        <div class="message-avatar">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="message-content">
+                            <div class="message-header">
+                                <div class="message-author">Claude</div>
+                                <div class="message-time">Now</div>
+                            </div>
+                            <div class="message-text">
+                                <p>👋 Welcome to <strong>Claude Code Chat</strong>!</p>
+                                <p>I'm here to help you with coding, debugging, and understanding your project. You can:</p>
+                                <ul>
+                                    <li>Ask me questions about your code</li>
+                                    <li>Request code reviews and suggestions</li>
+                                    <li>Reference files using <code>@filename</code></li>
+                                    <li>Use slash commands with <code>/help</code></li>
+                                </ul>
+                                <p>How can I assist you today?</p>
+                            </div>
+                            <div class="message-actions">
+                                <button class="action-btn" onclick="copyMessage(this)">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Thinking Indicator -->
+                <div class="thinking-indicator" id="thinkingIndicator">
+                    <div class="thinking-dots">
+                        <div class="thinking-dot"></div>
+                        <div class="thinking-dot"></div>
+                        <div class="thinking-dot"></div>
+                    </div>
+                    <span>Claude is thinking...</span>
+                </div>
+
+                <!-- Chat Input -->
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <textarea 
+                            id="chatInput" 
+                            class="chat-input" 
+                            placeholder="Ask Claude about your code... (Use @ to reference files, / for commands)"
+                            rows="1"></textarea>
+                        <button class="send-button" id="sendButton" onclick="sendMessage()">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="input-features">
+                        <span class="feature-hint">@file</span> Reference files
+                        <span class="feature-hint">/help</span> Commands
+                        <span class="feature-hint">Ctrl+Enter</span> Send
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Overlay -->
+    <div class="settings-overlay" id="settingsOverlay">
+        <div class="settings-panel">
+            <div class="settings-header">
+                <h2 class="settings-title">🔧 Claude Code Settings</h2>
+                <button class="settings-close" onclick="toggleSettings()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="settings-content">
+                <!-- Model Configuration -->
+                <div class="settings-section">
+                    <h3>🤖 Model Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label class="setting-label">Default Model</label>
+                            <select class="setting-input" id="defaultModel">
+                                <option value="sonnet">Claude 3.5 Sonnet</option>
+                                <option value="opus">Claude 3 Opus</option>
+                                <option value="haiku">Claude 3 Haiku</option>
+                            </select>
+                            <div class="setting-description">
+                                The default model to use for new conversations. Can be changed with /model command.
+                            </div>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <label class="setting-label">Max Turns</label>
+                            <input type="number" class="setting-input" id="maxTurns" value="5" min="1" max="20">
+                            <div class="setting-description">
+                                Maximum number of turns in non-interactive mode (--max-turns)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MCP Configuration -->
+                <div class="settings-section">
+                    <h3>🔌 MCP Servers</h3>
+                    <div id="mcpServers">
+                        <!-- MCP servers will be populated dynamically -->
+                    </div>
+                    <button class="btn btn-secondary" onclick="addMCPServer()">
+                        <i class="fas fa-plus"></i> Add MCP Server
+                    </button>
+                </div>
+
+                <!-- Tool Permissions -->
+                <div class="settings-section">
+                    <h3>🛠️ Tool Permissions</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label class="setting-label">Allowed Tools</label>
+                            <textarea class="setting-input" id="allowedTools" rows="3" placeholder="Bash, Read, Write, mcp__filesystem"></textarea>
+                            <div class="setting-description">
+                                Comma-separated list of allowed tools. Leave empty to allow all tools.
+                            </div>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <label class="setting-label">Disallowed Tools</label>
+                            <textarea class="setting-input" id="disallowedTools" rows="3" placeholder="Bash(rm -rf), Write(/etc/)"></textarea>
+                            <div class="setting-description">
+                                Comma-separated list of disallowed tools or specific commands.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Claude CLI Configuration -->
+                <div class="settings-section">
+                    <h3>⚙️ Claude CLI Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label class="setting-label">Claude CLI Path</label>
+                            <input type="text" class="setting-input" id="claudeCliPath" value="/opt/homebrew/bin/claude">
+                            <div class="setting-description">
+                                Path to the Claude CLI executable
+                            </div>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <label class="setting-label">System Prompt</label>
+                            <textarea class="setting-input" id="systemPrompt" rows="3" placeholder="You are a helpful coding assistant..."></textarea>
+                            <div class="setting-description">
+                                Custom system prompt to append to Claude's instructions
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="settings-actions">
+                <button class="btn btn-secondary" onclick="resetSettings()">Reset to Defaults</button>
+                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let sessionData = {};
+        let conversationHistory = [];
+
+        // Initialize the application
+        function init() {
+            setupWebSocket();
+            setupEventListeners();
+            loadFileTree();
+            setupAutoResize();
+        }
+
+        // WebSocket connection - no token needed
+        function setupWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}`);
+            
+            ws.onopen = () => {
+                updateConnectionStatus(true);
+                console.log('✅ WebSocket connected');
+            };
+            
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            };
+            
+            ws.onclose = () => {
+                updateConnectionStatus(false);
+                setTimeout(setupWebSocket, 3000); // Reconnect after 3 seconds
+            };
+            
+            ws.onerror = () => {
+                updateConnectionStatus(false);
+            };
+        }
+
+        // Handle WebSocket messages
+        function handleWebSocketMessage(message) {
+            switch (message.type) {
+                case 'session_data':
+                case 'session_update':
+                    sessionData = message.data;
+                    break;
+                case 'chat_response':
+                    handleChatResponse(message.data);
+                    break;
+                case 'chat_stream':
+                    handleChatStream(message.data);
+                    break;
+                case 'file_tree':
+                    updateFileTree(message.data);
+                    break;
+            }
+        }
+
+        // Handle chat response
+        function handleChatResponse(data) {
+            showThinking(false);
+            addMessage('assistant', data.message, 'Claude');
+        }
+
+        // Handle streaming chat response
+        function handleChatStream(data) {
+            // For now, just accumulate stream chunks
+            // In a full implementation, this would update the message in real-time
+            console.log('Stream chunk:', data.chunk);
+        }
+
+        // Event listeners
+        function setupEventListeners() {
+            const chatInput = document.getElementById('chatInput');
+            const sendButton = document.getElementById('sendButton');
+
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    sendMessage();
+                } else if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            chatInput.addEventListener('input', () => {
+                sendButton.disabled = chatInput.value.trim() === '';
+            });
+        }
+
+        // Auto-resize textarea
+        function setupAutoResize() {
+            const chatInput = document.getElementById('chatInput');
+            chatInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+            });
+        }
+
+        // Send message
+        function sendMessage() {
+            const chatInput = document.getElementById('chatInput');
+            const message = chatInput.value.trim();
+            
+            if (!message) return;
+
+            // Add user message to chat
+            addMessage('user', message, 'You');
+            
+            // Clear input
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+            
+            // Check for UI-handled slash commands first
+            if (message.startsWith('/')) {
+                const response = handleSlashCommands(message);
+                if (response) {
+                    // Handle locally without sending to Claude CLI
+                    showThinking(false);
+                    addMessage('assistant', response, 'System');
+                    return;
+                }
+            }
+            
+            // Show thinking indicator
+            showThinking(true);
+            
+            // Send to backend via WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'chat_message',
+                    message: message,
+                    model: document.getElementById('modelSelector').value,
+                    settings: settings // Include current settings
+                }));
+            } else {
+                showThinking(false);
+                addMessage('assistant', '**Connection Error**\n\nWebSocket connection not available. Please refresh the page and try again.', 'Claude');
+            }
+        }
+
+        // Add message to chat
+        function addMessage(type, content, author) {
+            const chatMessages = document.getElementById('chatMessages');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            
+            const avatarIcon = type === 'assistant' ? 'fas fa-robot' : 'fas fa-user';
+            
+            messageEl.innerHTML = `
+                <div class="message-avatar">
+                    <i class="${avatarIcon}"></i>
+                </div>
+                <div class="message-content">
+                    <div class="message-header">
+                        <div class="message-author">${author}</div>
+                        <div class="message-time">${timestamp}</div>
+                    </div>
+                    <div class="message-text">${processMessageContent(content)}</div>
+                    <div class="message-actions">
+                        <button class="action-btn" onclick="copyMessage(this)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        ${type === 'assistant' ? '<button class="action-btn" onclick="regenerateResponse(this)"><i class="fas fa-redo"></i></button>' : ''}
+                    </div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageEl);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Process message content (markdown, code blocks, etc.)
+        function processMessageContent(content) {
+            // Simple markdown processing for demo
+            content = content.replace(/```([\s\S]*?)```/g, (match, code) => {
+                return `<div class="code-block">
+                    <div class="code-header">
+                        <span>Code</span>
+                        <button class="action-btn" onclick="copyCode(this)">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                    <div class="code-content"><pre><code>${escapeHtml(code.trim())}</code></pre></div>
+                </div>`;
+            });
+            
+            content = content.replace(/`([^`]+)`/g, '<code>$1</code>');
+            content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            content = content.replace(/\n/g, '<br>');
+            
+            return content;
+        }
+
+        // Utility functions
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showThinking(show) {
+            const indicator = document.getElementById('thinkingIndicator');
+            if (show) {
+                indicator.classList.add('show');
+            } else {
+                indicator.classList.remove('show');
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connectionStatus');
+            const span = status.querySelector('span');
+            
+            if (connected) {
+                span.textContent = 'Connected';
+                status.style.color = 'var(--claude-success)';
+            } else {
+                span.textContent = 'Disconnected';
+                status.style.color = 'var(--claude-error)';
+            }
+        }
+
+        function copyMessage(button) {
+            const messageText = button.closest('.message-content').querySelector('.message-text').textContent;
+            navigator.clipboard.writeText(messageText);
+            
+            const icon = button.querySelector('i');
+            icon.className = 'fas fa-check';
+            setTimeout(() => {
+                icon.className = 'fas fa-copy';
+            }, 2000);
+        }
+
+        function copyCode(button) {
+            const codeContent = button.closest('.code-block').querySelector('code').textContent;
+            navigator.clipboard.writeText(codeContent);
+            
+            button.innerHTML = '<i class="fas fa-check"></i> Copied';
+            setTimeout(() => {
+                button.innerHTML = '<i class="fas fa-copy"></i> Copy';
+            }, 2000);
+        }
+
+        function loadFileTree() {
+            // Request file tree from server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'get_file_tree' }));
+            }
+        }
+
+        function updateFileTree(treeData) {
+            const fileTree = document.getElementById('fileTree');
+            fileTree.innerHTML = '';
+            
+            function renderTreeItems(items, depth = 0) {
+                items.forEach(item => {
+                    const treeItem = document.createElement('div');
+                    treeItem.className = 'tree-item';
+                    treeItem.style.paddingLeft = `${1 + depth * 0.75}rem`;
+                    
+                    const icon = item.isDirectory ? 'fas fa-folder' : getFileIcon(item.name);
+                    
+                    treeItem.innerHTML = `
+                        <div class="tree-icon">
+                            <i class="${icon}"></i>
+                        </div>
+                        ${item.name}
+                    `;
+                    
+                    treeItem.addEventListener('click', () => {
+                        document.querySelectorAll('.tree-item').forEach(i => i.classList.remove('selected'));
+                        treeItem.classList.add('selected');
+                        
+                        if (!item.isDirectory) {
+                            // Insert file reference in chat input
+                            const chatInput = document.getElementById('chatInput');
+                            const fileName = item.name;
+                            if (!chatInput.value.includes(`@${fileName}`)) {
+                                chatInput.value += `@${fileName} `;
+                                chatInput.focus();
+                            }
+                        }
+                    });
+                    
+                    fileTree.appendChild(treeItem);
+                    
+                    // Render children if it's a directory
+                    if (item.children && item.children.length > 0) {
+                        renderTreeItems(item.children, depth + 1);
+                    }
+                });
+            }
+            
+            renderTreeItems(treeData);
+        }
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            const iconMap = {
+                'js': 'fab fa-js-square',
+                'ts': 'fab fa-js-square',
+                'html': 'fab fa-html5',
+                'css': 'fab fa-css3-alt',
+                'json': 'fas fa-file-code',
+                'md': 'fab fa-markdown',
+                'py': 'fab fa-python',
+                'java': 'fab fa-java',
+                'cpp': 'fas fa-file-code',
+                'c': 'fas fa-file-code',
+                'php': 'fab fa-php',
+                'rb': 'fas fa-gem',
+                'go': 'fas fa-file-code',
+                'rs': 'fas fa-file-code',
+                'sql': 'fas fa-database'
+            };
+            
+            return iconMap[ext] || 'fas fa-file';
+        }
+
+
+
+        // Settings Management
+        let settings = {
+            defaultModel: 'sonnet',
+            maxTurns: 5,
+            allowedTools: '',
+            disallowedTools: '',
+            claudeCliPath: '/opt/homebrew/bin/claude',
+            systemPrompt: '',
+            mcpServers: []
+        };
+
+        function toggleSettings() {
+            const overlay = document.getElementById('settingsOverlay');
+            overlay.classList.toggle('show');
+            
+            if (overlay.classList.contains('show')) {
+                loadSettings();
+                loadMCPServers();
+            }
+        }
+
+        function loadSettings() {
+            // Load settings from localStorage or defaults
+            const savedSettings = localStorage.getItem('claude-chat-settings');
+            if (savedSettings) {
+                settings = { ...settings, ...JSON.parse(savedSettings) };
+            }
+            
+            // Populate UI with current settings
+            document.getElementById('defaultModel').value = settings.defaultModel;
+            document.getElementById('maxTurns').value = settings.maxTurns;
+            document.getElementById('allowedTools').value = settings.allowedTools;
+            document.getElementById('disallowedTools').value = settings.disallowedTools;
+            document.getElementById('claudeCliPath').value = settings.claudeCliPath;
+            document.getElementById('systemPrompt').value = settings.systemPrompt;
+            
+            // Update main model selector
+            document.getElementById('modelSelector').value = settings.defaultModel;
+        }
+
+        function saveSettings() {
+            // Collect settings from UI
+            settings.defaultModel = document.getElementById('defaultModel').value;
+            settings.maxTurns = parseInt(document.getElementById('maxTurns').value);
+            settings.allowedTools = document.getElementById('allowedTools').value;
+            settings.disallowedTools = document.getElementById('disallowedTools').value;
+            settings.claudeCliPath = document.getElementById('claudeCliPath').value;
+            settings.systemPrompt = document.getElementById('systemPrompt').value;
+            
+            // Save to localStorage
+            localStorage.setItem('claude-chat-settings', JSON.stringify(settings));
+            
+            // Update main model selector
+            document.getElementById('modelSelector').value = settings.defaultModel;
+            
+            // Send settings to backend
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'update_settings',
+                    settings: settings
+                }));
+            }
+            
+            toggleSettings();
+            
+            // Show confirmation
+            addMessage('assistant', '⚙️ **Settings Updated**\n\nYour configuration has been saved and will be applied to future conversations.', 'System');
+        }
+
+        function resetSettings() {
+            if (confirm('Reset all settings to defaults? This cannot be undone.')) {
+                localStorage.removeItem('claude-chat-settings');
+                settings = {
+                    defaultModel: 'sonnet',
+                    maxTurns: 5,
+                    allowedTools: '',
+                    disallowedTools: '',
+                    claudeCliPath: '/opt/homebrew/bin/claude',
+                    systemPrompt: '',
+                    mcpServers: []
+                };
+                loadSettings();
+            }
+        }
+
+        function handleModelChange() {
+            const selectedModel = document.getElementById('modelSelector').value;
+            
+            // Send model change command to Claude CLI
+            const modelCommand = `/model ${selectedModel}`;
+            
+            addMessage('user', modelCommand, 'You');
+            showThinking(true);
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'chat_message',
+                    message: modelCommand,
+                    model: selectedModel
+                }));
+            }
+        }
+
+        function loadMCPServers() {
+            const mcpContainer = document.getElementById('mcpServers');
+            mcpContainer.innerHTML = '';
+            
+            // Add existing MCP servers
+            settings.mcpServers.forEach((server, index) => {
+                addMCPServerToUI(server, index);
+            });
+            
+            // Add default MCP servers if none exist
+            if (settings.mcpServers.length === 0) {
+                const defaultServers = [
+                    {
+                        name: 'filesystem',
+                        command: 'npx',
+                        args: ['-y', '@modelcontextprotocol/server-filesystem', process.cwd()],
+                        status: 'disconnected'
+                    },
+                    {
+                        name: 'github',
+                        command: 'npx',
+                        args: ['-y', '@modelcontextprotocol/server-github'],
+                        env: { GITHUB_TOKEN: '' },
+                        status: 'disconnected'
+                    }
+                ];
+                
+                defaultServers.forEach((server, index) => {
+                    addMCPServerToUI(server, index);
+                });
+            }
+        }
+
+        function addMCPServerToUI(server, index) {
+            const mcpContainer = document.getElementById('mcpServers');
+            const serverDiv = document.createElement('div');
+            serverDiv.className = 'mcp-server';
+            serverDiv.innerHTML = `
+                <div class="mcp-server-header">
+                    <span class="mcp-server-name">${server.name}</span>
+                    <span class="mcp-server-status ${server.status}">${server.status}</span>
+                </div>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label class="setting-label">Command</label>
+                        <input type="text" class="setting-input" value="${server.command}" onchange="updateMCPServer(${index}, 'command', this.value)">
+                    </div>
+                    <div class="setting-item">
+                        <label class="setting-label">Arguments</label>
+                        <input type="text" class="setting-input" value="${server.args ? server.args.join(' ') : ''}" onchange="updateMCPServerArgs(${index}, this.value)">
+                    </div>
+                </div>
+                <button class="btn btn-secondary" onclick="removeMCPServer(${index})" style="margin-top: 1rem;">
+                    <i class="fas fa-trash"></i> Remove
+                </button>
+            `;
+            mcpContainer.appendChild(serverDiv);
+        }
+
+        function addMCPServer() {
+            const newServer = {
+                name: 'new-server',
+                command: 'npx',
+                args: ['-y', '@modelcontextprotocol/server-example'],
+                status: 'disconnected'
+            };
+            
+            settings.mcpServers.push(newServer);
+            addMCPServerToUI(newServer, settings.mcpServers.length - 1);
+        }
+
+        function updateMCPServer(index, field, value) {
+            if (settings.mcpServers[index]) {
+                settings.mcpServers[index][field] = value;
+            }
+        }
+
+        function updateMCPServerArgs(index, argsString) {
+            if (settings.mcpServers[index]) {
+                settings.mcpServers[index].args = argsString.split(' ').filter(arg => arg.trim());
+            }
+        }
+
+        function removeMCPServer(index) {
+            settings.mcpServers.splice(index, 1);
+            loadMCPServers();
+        }
+
+        // Enhanced slash command handling
+        function handleSlashCommands(message) {
+            const slashCommands = {
+                '/model': (args) => {
+                    const model = args.trim();
+                    if (['sonnet', 'opus', 'haiku'].includes(model)) {
+                        document.getElementById('modelSelector').value = model;
+                        settings.defaultModel = model;
+                        return `🤖 **Model Changed**\n\nSwitched to Claude 3.5 ${model.charAt(0).toUpperCase() + model.slice(1)}`;
+                    } else {
+                        return `❌ **Invalid Model**\n\nValid models: sonnet, opus, haiku\nExample: \`/model opus\``;
+                    }
+                },
+                '/settings': () => {
+                    toggleSettings();
+                    return `⚙️ **Settings Panel Opened**\n\nConfigure your Claude Code preferences in the settings panel.`;
+                },
+                '/tools': () => {
+                    const allowed = settings.allowedTools || 'All tools allowed';
+                    const disallowed = settings.disallowedTools || 'No tools disallowed';
+                    return `🛠️ **Tool Permissions**\n\n**Allowed:** ${allowed}\n**Disallowed:** ${disallowed}\n\nUse \`/settings\` to modify tool permissions.`;
+                },
+                '/mcp': () => {
+                    const serverCount = settings.mcpServers.length;
+                    const activeServers = settings.mcpServers.filter(s => s.status === 'connected').length;
+                    return `🔌 **MCP Servers**\n\n**Total:** ${serverCount}\n**Active:** ${activeServers}\n\nUse \`/settings\` to manage MCP servers.`;
+                }
+            };
+            
+            const [command, ...args] = message.split(' ');
+            const handler = slashCommands[command];
+            
+            if (handler) {
+                return handler(args.join(' '));
+            }
+            
+            return null; // Not a handled slash command
+        }
+
+        // Initialize app when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            init();
+            loadSettings();
+        });
+    </script>
+</body>
+</html>
